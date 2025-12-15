@@ -2,20 +2,25 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const connectDB = async () => {
-        const fallbackCluster = 'mongodb://mongo:27017/stok_takip';
-        const fallbackLocal = 'mongodb://127.0.0.1:27017/stok_takip';
-        const fallback = fallbackLocal;
-        const uri = process.env.MONGO_URI || fallback;
+    // Check if we have a connection to the database or if it's currently connecting or disconnecting (readyState 1 or 2)
+    if (mongoose.connection.readyState >= 1) {
+        return;
+    }
+
+    const fallbackCluster = 'mongodb://mongo:27017/stok_takip';
+    const fallbackLocal = 'mongodb://127.0.0.1:27017/stok_takip';
+    const fallback = fallbackLocal;
+    const uri = process.env.MONGO_URI || fallback;
 
     if (!uri || typeof uri !== 'string') {
         console.error('MONGO_URI tanımlı değil. Container env içinde MONGO_URI ayarlayın. Örnek: mongodb://mongo:27017/stok_takip');
-        process.exit(1);
+        throw new Error('MONGO_URI is not defined');
     }
 
     const isValidURI = (uri) => /^mongodb(?:\+srv)?:\/\/.+/.test(uri);
     if (!isValidURI(uri)) {
         console.error('Invalid MONGO_URI format. Please check your environment configuration.');
-        process.exit(1);
+        throw new Error('Invalid MONGO_URI format');
     }
 
     try {
@@ -23,7 +28,7 @@ const connectDB = async () => {
         console.log('MongoDB connected:', uri.replace(/:\/\/([^@]+)@/, '://***@'));
     } catch (err) {
         console.error('MongoDB connection error:', err.message);
-        process.exit(1);
+        throw err;
     }
 };
 

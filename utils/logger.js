@@ -1,5 +1,14 @@
 const winston = require('winston');
 
+const transports = [
+    new winston.transports.Console()
+];
+
+// Only add file transport if NOT in Vercel environment
+if (!process.env.VERCEL) {
+    transports.push(new winston.transports.File({ filename: 'logs/server.log' }));
+}
+
 const logger = winston.createLogger({
     level: 'info',
     format: winston.format.combine(
@@ -8,10 +17,7 @@ const logger = winston.createLogger({
             return `${timestamp} [${level.toUpperCase()}]: ${message}`;
         })
     ),
-    transports: [
-        new winston.transports.Console(),
-        new winston.transports.File({ filename: 'logs/server.log' })
-    ]
+    transports: transports
 });
 
 module.exports = logger;

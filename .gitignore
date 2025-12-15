@@ -39,3 +39,4 @@ Thumbs.db
 server/logs
 client/build
 client/dist
+.vercel

@@ -11,35 +11,30 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Connect Database
-connectDB().catch((err) => {
+console.log('Attempting to connect to DB...');
+console.log('MONGO_URI present:', !!process.env.MONGO_URI);
+connectDB().then(() => {
+  console.log('DB Connection Initialized');
+}).catch((err) => {
   console.error('Database connection failed:', err.message);
-  process.exit(1);
+  // process.exit(1); // Removed for serverless stability
 });
 
-// Middleware
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5000',
-  'http://localhost:3000',
-  'https://nexstock.vercel.app',
-  // Add production Vercel domains from env
-  process.env.FRONTEND_URL,
-  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-].filter(Boolean);
-
+// Middleware - Simplified CORS for Vercel
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin matches allowed list or is a Vercel preview deployment
-    if (allowedOrigins.includes(origin) || origin.match(/^https:\/\/.*\.vercel\.app$/)) {
+  origin: function (origin, callback) {
+    // Allow all Vercel domains and localhost
+    if (!origin || 
+        origin.includes('.vercel.app') || 
+        origin.includes('localhost')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
 };
 app.use(cors(corsOptions));
 app.use(express.json({ extended: false }));
@@ -93,9 +88,15 @@ app.get('/health', async (req, res) => {
   res.json({ status: 'ok', database: dbStatus });
 });
 
+// Root endpoint
+app.get('/', (req, res) => res.send('NexStock API Running'));
+// Favicon handler
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 const PORT = process.env.PORT || 5000;
 
-if (process.env.NODE_ENV !== 'test') {
+// Only start server in local/non-serverless environments
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
 }
 
