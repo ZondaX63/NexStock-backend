@@ -17,8 +17,28 @@ connectDB().catch((err) => {
 });
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5000',
+  'http://localhost:3000',
+  'https://nexstock.vercel.app',
+  // Add production Vercel domains from env
+  process.env.FRONTEND_URL,
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+].filter(Boolean);
+
 const corsOptions = {
-  origin: ['http://localhost:5173', 'https://nexstock.vercel.app', 'http://localhost:5000', 'http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches allowed list or is a Vercel preview deployment
+    if (allowedOrigins.includes(origin) || origin.match(/^https:\/\/.*\.vercel\.app$/)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -53,18 +73,24 @@ app.use('/api/logs', require('./routes/logs'));
 
 // Serve static frontend if build exists (monolith image)
 const path = require('path');
+const fs = require('fs');
 const staticDir = path.join(__dirname, 'public');
-app.use(express.static(staticDir));
+
+const indexHtmlPath = path.join(staticDir, 'index.html');
+if (process.env.NODE_ENV === 'production' || fs.existsSync(indexHtmlPath)) {
+  app.use(express.static(staticDir));
+  // SPA fallback to index.html for non-API routes
+  app.get(/^(?!\/api\/).*/, (req, res) => {
+    res.sendFile(indexHtmlPath);
+  });
+} else {
+  console.log(`Frontend build not found at ${indexHtmlPath} — static serving disabled for development.`);
+}
 
 // Health endpoint for Docker/monitoring
 app.get('/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.json({ status: 'ok', database: dbStatus });
-});
-
-// SPA fallback to index.html for non-API routes
-app.get(/^(?!\/api\/).*/, (req, res) => {
-  res.sendFile(path.join(staticDir, 'index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
