@@ -34,9 +34,14 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
+  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization'],
+  optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json({ extended: false }));
 // Security headers
 app.use(helmet());

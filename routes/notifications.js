@@ -6,10 +6,21 @@ const { auth } = require('../middleware/authMiddleware');
 // Bildirimleri listele (şirket bazlı)
 router.get('/', auth, async (req, res) => {
   try {
+    const mongoose = require('mongoose');
+    const connectDB = require('../config/db');
+    
+    // Ensure DB connection
+    if (mongoose.connection.readyState !== 1) {
+      console.log('DB not connected in /notifications, attempting to connect...');
+      await connectDB();
+    }
+    
     const notifications = await Notification.find({ company: req.user.company }).sort({ date: -1 });
     res.json(notifications);
   } catch (err) {
-    res.status(500).json({ error: 'Bildirimler alınamadı.' });
+    console.error('Error in GET /notifications:', err.message);
+    console.error('Full error:', err);
+    res.status(500).json({ error: 'Bildirimler alınamadı.', details: err.message });
   }
 });
 

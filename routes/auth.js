@@ -200,6 +200,15 @@ router.delete('/user/:id', [auth, admin], async (req, res) => {
 // @access  Private
 router.get('/me', auth, async (req, res) => {
     try {
+        const mongoose = require('mongoose');
+        const connectDB = require('../config/db');
+        
+        // Ensure DB connection
+        if (mongoose.connection.readyState !== 1) {
+            console.log('DB not connected in /auth/me, attempting to connect...');
+            await connectDB();
+        }
+        
         // req.user.id is coming from the auth middleware
         const user = await User.findById(req.user.id).select('-password').populate('company', 'name');
         if (!user) {
@@ -207,8 +216,9 @@ router.get('/me', auth, async (req, res) => {
         }
         res.json(user);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        console.error('Error in /auth/me:', err.message);
+        console.error('Full error:', err);
+        res.status(500).json({ msg: 'Server Error', error: err.message });
     }
 });
 

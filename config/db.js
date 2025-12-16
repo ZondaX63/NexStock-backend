@@ -2,8 +2,16 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const connectDB = async () => {
-    // Check if we have a connection to the database or if it's currently connecting or disconnecting (readyState 1 or 2)
-    if (mongoose.connection.readyState >= 1) {
+    // Check if we have a connection to the database or if it's currently connecting
+    if (mongoose.connection.readyState === 1) {
+        return;
+    }
+    
+    // If connecting, wait for connection
+    if (mongoose.connection.readyState === 2) {
+        await new Promise((resolve) => {
+            mongoose.connection.once('connected', resolve);
+        });
         return;
     }
 
@@ -24,10 +32,14 @@ const connectDB = async () => {
     }
 
     try {
-        await mongoose.connect(uri); // modern driver varsayılanları yeterli
+        await mongoose.connect(uri, {
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+        });
         console.log('MongoDB connected:', uri.replace(/:\/\/([^@]+)@/, '://***@'));
     } catch (err) {
         console.error('MongoDB connection error:', err.message);
+        console.error('Full error:', err);
         throw err;
     }
 };
