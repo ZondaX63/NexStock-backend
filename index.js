@@ -21,20 +21,21 @@ connectDB().then(() => {
 });
 
 // Middleware - CORS Configuration
-const corsOptions = {
+app.use(cors({
   origin: function (origin, callback) {
-    const allowedOrigins = [
-      process.env.FRONTEND_URL,
-      process.env.REACT_APP_FRONTEND_URL,
-      'http://localhost:3000',
-      'http://localhost:5173'
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    const allowedDomains = [
+      '.onrender.com',
+      '.vercel.app',
+      'localhost',
+      '127.0.0.1'
     ];
 
-    // Allow all Vercel and Render domains for flexibility
-    if (!origin ||
-      origin.includes('.vercel.app') ||
-      origin.includes('.onrender.com') ||
-      allowedOrigins.includes(origin)) {
+    const isAllowed = allowedDomains.some(domain => origin.includes(domain));
+
+    if (isAllowed) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -42,17 +43,18 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization', 'Accept'],
   optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
+}));
 
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
+// Handle preflight requests
+app.options('*', cors());
 
 app.use(express.json({ extended: false }));
 // Security headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 // Basic rate limiter (tune as needed)
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false });
 app.use('/api/', apiLimiter);
