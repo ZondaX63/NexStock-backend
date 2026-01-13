@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: nexstock-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGO_URI
+        sync: false # Render dashboard üzerinden manuel ekleyin
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://nexstock-frontend.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false # Render dashboard üzerinden manuel ekleyin

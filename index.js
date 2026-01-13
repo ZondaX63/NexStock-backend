@@ -20,13 +20,21 @@ connectDB().then(() => {
   // process.exit(1); // Removed for serverless stability
 });
 
-// Middleware - Simplified CORS for Vercel
+// Middleware - CORS Configuration
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow all Vercel domains and localhost
-    if (!origin || 
-        origin.includes('.vercel.app') || 
-        origin.includes('localhost')) {
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      process.env.REACT_APP_FRONTEND_URL,
+      'http://localhost:3000',
+      'http://localhost:5173'
+    ];
+
+    // Allow all Vercel and Render domains for flexibility
+    if (!origin ||
+      origin.includes('.vercel.app') ||
+      origin.includes('.onrender.com') ||
+      allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -100,8 +108,8 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 const PORT = process.env.PORT || 5000;
 
-// Only start server in local/non-serverless environments
-if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+// Start server
+if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
 }
 
