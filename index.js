@@ -93,7 +93,7 @@ app.get('/', (req, res) => res.send('NexStock API Running'));
 // Favicon handler
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT) || 5000;
 
 // Start server
 if (process.env.NODE_ENV !== 'test') {

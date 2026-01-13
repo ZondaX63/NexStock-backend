@@ -80,7 +80,9 @@ exports.chatWithData = async (req, res) => {
         const response = await result.response;
         res.status(200).json({ reply: response.text() });
     } catch (error) {
-        res.status(500).json({ message: 'Error processing chat', error: error.message });
+        console.error('AI Chat Error Details:', JSON.stringify(error, null, 2));
+        console.error('Full Error Object:', error);
+        res.status(500).json({ message: 'Error processing chat', error: error.message, details: error.toString() });
     }
 };
 
@@ -137,20 +139,35 @@ exports.generateEmail = async (req, res) => {
 exports.analyzeReceipt = async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ message: 'Lütfen bir fatura fotoğrafı yükleyin.' });
+            return res.status(400).json({ message: 'Lütfen bir fatura dosyası (Resim veya PDF) yükleyin.' });
         }
 
-        // Convert buffer to base64 for Gemini
-        const imagePart = {
-            inlineData: {
-                data: req.file.buffer.toString("base64"),
-                mimeType: req.file.mimetype
-            }
-        };
+        // Prepare data for Gemini based on file type
+        let contentPart;
+        const mimeType = req.file.mimetype;
+
+        if (mimeType === 'application/pdf') {
+            contentPart = {
+                inlineData: {
+                    data: req.file.buffer.toString("base64"),
+                    mimeType: "application/pdf"
+                }
+            };
+        } else if (mimeType.startsWith('image/')) {
+            contentPart = {
+                inlineData: {
+                    data: req.file.buffer.toString("base64"),
+                    mimeType: mimeType
+                }
+            };
+        } else {
+            return res.status(400).json({ message: 'Desteklenmeyen dosya formatı. Sadece Resim ve PDF.' });
+        }
 
         const prompt = `
-            Bu bir fatura veya fiş görselidir. Lütfen bu görseldeki verileri analiz et ve aşağıdaki JSON formatında döndür. 
+            Bu bir fatura dökümanıdır (Görsel veya PDF). Lütfen bu dökümandaki verileri analiz et ve aşağıdaki JSON formatında döndür. 
             Eğer bir alanı bulamazsan boş bırak veya uygun bir varsayılan değer ver.
+            Ürünlerle veritabanında eşleşme yapılabilmesi için ürün isimlerini net bir şekilde al.
             ÖNEMLİ: Sadece geçerli bir JSON objesi döndür, başka açıklama ekleme.
 
             JSON Yapısı:
@@ -170,7 +187,10 @@ exports.analyzeReceipt = async (req, res) => {
             }
         `;
 
-        const result = await visionModel.generateContent([prompt, imagePart]);
+        // Note: For gemini-flash-latest or gemini-1.5, PDF support is native.
+        // If getting errors with PDF on specific legacy models, we might need a different approach,
+        // but current setup (flash-latest) usually handles it.
+        const result = await visionModel.generateContent([prompt, contentPart]);
         const response = await result.response;
         let text = response.text();
 
@@ -181,7 +201,7 @@ exports.analyzeReceipt = async (req, res) => {
         res.status(200).json(extractedData);
     } catch (error) {
         console.error('Receipt Analysis Error:', error);
-        res.status(500).json({ message: 'Fatura taranırken bir hata oluştu.', error: error.message });
+        res.status(500).json({ message: 'Belge taranırken bir hata oluştu.', error: error.message });
     }
 };
 
@@ -246,8 +266,10 @@ exports.semanticSearch = async (req, res) => {
 
         if (!query) return res.status(400).json({ message: 'Query is required' });
 
-        // Get all products for context
-        const products = await Product.find({ company }).select('name category quantity unit');
+        // Get all products for context (limit to recent 50 to avoid token overflow for now)
+        const products = await Product.find({ company })
+            .select('name category quantity unit')
+            .limit(50);
 
         const context = products.map(p => `${p.name} (Kategori: ${p.category})`).join(', ');
 
