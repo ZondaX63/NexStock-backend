@@ -1,4 +1,4 @@
-const { model } = require('../services/aiService');
+const { textModel, visionModel } = require('../services/aiService');
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Invoice = require('../models/Invoice');
@@ -59,7 +59,7 @@ exports.getDashboardInsights = async (req, res) => {
             Lütfen profesyonel ama samimi bir ton kullan. Raporu markdown formatında ver.
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
@@ -76,7 +76,7 @@ exports.chatWithData = async (req, res) => {
         if (!message) return res.status(400).json({ message: 'Message is required' });
 
         // Simple implementation for now
-        const result = await model.generateContent(`İşletme sahibi sana şunu soruyor: "${message}". Bir asistan gibi kısa bir cevap ver.`);
+        const result = await textModel.generateContent(`İşletme sahibi sana şunu soruyor: "${message}". Bir asistan gibi kısa bir cevap ver.`);
         const response = await result.response;
         res.status(200).json({ reply: response.text() });
     } catch (error) {
@@ -98,7 +98,7 @@ exports.generateDescription = async (req, res) => {
             Sadece açıklama metnini döndür. Türkçe olsun.
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         res.status(200).json({ description: response.text() });
     } catch (error) {
@@ -125,7 +125,7 @@ exports.generateEmail = async (req, res) => {
             Lütfen sadece konu ve içeriği düzgün bir formatta ver. JSON veya karmaşık yapı olmasın, doğrudan kopyalanıp yapıştırılabilecek bir metin olsun.
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         res.status(200).json({ emailContent: response.text() });
     } catch (error) {
@@ -170,7 +170,7 @@ exports.analyzeReceipt = async (req, res) => {
             }
         `;
 
-        const result = await model.generateContent([prompt, imagePart]);
+        const result = await visionModel.generateContent([prompt, imagePart]);
         const response = await result.response;
         let text = response.text();
 
@@ -230,7 +230,7 @@ exports.predictStock = async (req, res) => {
             Lütfen cevapları Türkçe ve sadece 2-3 kısa madde halinde ver.
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         res.status(200).json({ forecast: response.text() });
     } catch (error) {
@@ -260,7 +260,7 @@ exports.semanticSearch = async (req, res) => {
             Eğer hiçbir alaka kuramıyorsan "Bulunamadı" döndür.
         `;
 
-        const result = await model.generateContent(prompt);
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         const suggestionText = response.text();
 
