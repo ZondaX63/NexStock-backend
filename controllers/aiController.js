@@ -107,6 +107,33 @@ exports.generateDescription = async (req, res) => {
     }
 };
 
+exports.generateEmail = async (req, res) => {
+    try {
+        const { type, partnerName, items, totalAmount, currency } = req.body;
+
+        const prompt = `
+            Aşağıdaki bilgilere göre ${type === 'offer' ? 'teklif' : 'sipariş'} ile ilgili müşteriye/tedarikçiye gönderilecek profesyonel ve nazik bir e-posta taslağı yaz.
+            
+            Alıcı: ${partnerName}
+            İşlem Tipi: ${type === 'offer' ? 'Satış Teklifi' : type === 'confirmation' ? 'Sipariş Onayı' : 'Fatura Gönderimi'}
+            Ürünler: ${items ? items.map(i => i.name).join(', ') : 'Belirtilmemiş'}
+            Toplam Tutar: ${totalAmount} ${currency}
+
+            E-posta Konusu: ...
+            E-posta İçeriği: ...
+            
+            Lütfen sadece konu ve içeriği düzgün bir formatta ver. JSON veya karmaşık yapı olmasın, doğrudan kopyalanıp yapıştırılabilecek bir metin olsun.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        res.status(200).json({ emailContent: response.text() });
+    } catch (error) {
+        console.error('Email Gen Error:', error);
+        res.status(500).json({ message: 'Error generating email', error: error.message });
+    }
+};
+
 exports.analyzeReceipt = async (req, res) => {
     try {
         if (!req.file) {

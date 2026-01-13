@@ -30,4 +30,9 @@ router.post('/generate-description', auth, aiController.generateDescription);
 // @access  Private
 router.get('/predict-stock/:productId', auth, aiController.predictStock);
 
+// @route   POST api/ai/generate-email
+// @desc    Generate professional email for invoice/offer
+// @access  Private
+router.post('/generate-email', auth, aiController.generateEmail);
+
 module.exports = router;
