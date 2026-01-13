@@ -22,28 +22,10 @@ connectDB().then(() => {
 
 // Middleware - CORS Configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    const allowedDomains = [
-      '.onrender.com',
-      '.vercel.app',
-      'localhost',
-      '127.0.0.1'
-    ];
-
-    const isAllowed = allowedDomains.some(domain => origin.includes(domain));
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization', 'Accept'],
+  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
   optionsSuccessStatus: 200
 }));
 
