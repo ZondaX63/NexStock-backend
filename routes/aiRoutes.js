@@ -35,4 +35,9 @@ router.get('/predict-stock/:productId', auth, aiController.predictStock);
 // @access  Private
 router.post('/generate-email', auth, aiController.generateEmail);
 
+// @route   POST api/ai/semantic-search
+// @desc    AI-powered search suggestions for products
+// @access  Private
+router.post('/semantic-search', auth, aiController.semanticSearch);
+
 module.exports = router;

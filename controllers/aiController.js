@@ -238,3 +238,40 @@ exports.predictStock = async (req, res) => {
         res.status(500).json({ message: 'Error predicting stock', error: error.message });
     }
 };
+
+exports.semanticSearch = async (req, res) => {
+    try {
+        const { query } = req.body;
+        const company = req.user.company;
+
+        if (!query) return res.status(400).json({ message: 'Query is required' });
+
+        // Get all products for context
+        const products = await Product.find({ company }).select('name category quantity unit');
+
+        const context = products.map(p => `${p.name} (Kategori: ${p.category})`).join(', ');
+
+        const prompt = `
+            Kullanıcı stokta şu terimi arıyor: "${query}"
+            Elimizdeki ürün listesi: ${context}
+
+            Lütfen bu listeden kullanıcı aramasına en yakın veya ilgili olabilecek ilk 3 ürünü seç.
+            Ürün isimlerini aralarında virgül olacak şekilde sadece isim olarak döndür. 
+            Eğer hiçbir alaka kuramıyorsan "Bulunamadı" döndür.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const suggestionText = response.text();
+
+        if (suggestionText.includes('Bulunamadı')) {
+            return res.status(200).json({ suggestions: [] });
+        }
+
+        const suggestions = suggestionText.split(',').map(s => s.trim());
+        res.status(200).json({ suggestions });
+    } catch (error) {
+        console.error('Semantic Search Error:', error);
+        res.status(500).json({ message: 'Error searching semantics', error: error.message });
+    }
+};
