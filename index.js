@@ -63,6 +63,7 @@ app.use('/api/brands', require('./routes/brands'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api/logs', require('./routes/logs'));
+app.use('/api/ai', require('./routes/aiRoutes'));
 // ... diğer route'lar buraya eklenebilir
 
 // Serve static frontend if build exists (monolith image)
