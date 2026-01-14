@@ -2,7 +2,7 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Product = require('../models/Product');
-const app = require('../server');
+const app = require('../index');
 
 let adminToken, companyId;
 

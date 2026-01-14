@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Product = require('../models/Product');
 const Account = require('../models/Account');
-const app = require('../server');
+const app = require('../index');
 
 let adminToken, companyId;
 

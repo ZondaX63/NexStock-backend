@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
-const app = require('../server');
+const app = require('../index');
 
 let adminToken, companyId;
 

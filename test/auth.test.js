@@ -2,7 +2,7 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Company = require('../models/Company');
-const app = require('../server');
+const app = require('../index');
 
 let adminToken, companyId;
 
@@ -117,4 +117,15 @@ describe('Auth API', () => {
       .send({ email: 'nouser@example.com', password: 'test1234' });
     expect(res.statusCode).toBe(400);
   });
-});
+  it('should get current user profile (auth/me)', async () => {
+    const res = await request(app)
+      .get('/api/auth/me')
+      .set('x-auth-token', adminToken);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.email).toBe(testUser.email);
+  });
+
+  it('should not get profile without token', async () => {
+    const res = await request(app).get('/api/auth/me');
+    expect(res.statusCode).toBe(401);
+  });});

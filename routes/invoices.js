@@ -153,19 +153,24 @@ router.get('/:id', auth, async (req, res) => {
 // @desc    Create an invoice (as draft)
 // @access  Private
 router.post('/', auth, async (req, res) => {
-    const { invoiceNumber, customerOrSupplier, partnerModel, products, totalAmount, type, date, dueDate, vat, discount1, discount2, discount3, discount4, currency, exchangeRate } = req.body;
+    let { invoiceNumber, customerOrSupplier, partnerModel, products, totalAmount, type, date, dueDate, vat, discount1, discount2, discount3, discount4, currency, exchangeRate } = req.body;
 
     if (customerOrSupplier && !mongoose.Types.ObjectId.isValid(customerOrSupplier)) {
         return res.status(400).json({ msg: 'Invalid customer or supplier ID' });
     }
 
     try {
+        // Simple server-side calculation of total if missing
+        if (!totalAmount && products && products.length > 0) {
+            totalAmount = products.reduce((sum, p) => sum + (p.quantity * p.price), 0);
+        }
+
         const newInvoice = new Invoice({
             invoiceNumber,
             customerOrSupplier,
             partnerModel,
             products,
-            totalAmount,
+            totalAmount: totalAmount || 0,
             type,
             date,
             dueDate,
