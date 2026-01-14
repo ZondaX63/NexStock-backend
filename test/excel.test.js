@@ -36,11 +36,22 @@ describe('Excel Services API', () => {
     it('should export products to Excel', async () => {
         const res = await request(app)
             .get('/api/products/export')
-            .set('x-auth-token', adminToken);
+            .set('x-auth-token', adminToken)
+            .parse((res, callback) => {
+                res.setEncoding('binary');
+                res.data = '';
+                res.on('data', (chunk) => {
+                    res.data += chunk;
+                });
+                res.on('end', () => {
+                    callback(null, Buffer.from(res.data, 'binary'));
+                });
+            });
         
         expect(res.statusCode).toBe(200);
         expect(res.header['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        expect(res.body instanceof Buffer).toBe(true);
+        expect(Buffer.isBuffer(res.body)).toBe(true);
+        expect(res.body.length).toBeGreaterThan(0);
     });
 
     // Mocking file upload is tricky with supertest but possible

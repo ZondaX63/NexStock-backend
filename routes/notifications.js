@@ -1,7 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
+const Product = require('../models/Product');
 const { auth } = require('../middleware/authMiddleware');
+
+// Kritik stok seviyesindeki ürünleri getir
+router.get('/critical-stock', auth, async (req, res) => {
+  try {
+    const products = await Product.find({
+      company: req.user.company,
+      trackStock: true,
+      $expr: { $lte: ["$quantity", "$criticalStockLevel"] }
+    });
+    res.json(products);
+  } catch (err) {
+    console.error('Error in GET /notifications/critical-stock:', err.message);
+    res.status(500).json({ error: 'Kritik stok verileri alınamadı.' });
+  }
+});
 
 // Bildirimleri listele (şirket bazlı)
 router.get('/', auth, async (req, res) => {

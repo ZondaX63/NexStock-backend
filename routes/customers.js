@@ -150,8 +150,12 @@ router.get('/:id/debt', auth, async (req, res) => {
 // @desc    Update a customer
 // @access  Private
 router.put('/:id', auth, async (req, res) => {
-    const { name, email, phone, address } = req.body;
-    const customerFields = { name, email, phone, address };
+    const { name, email, phone, address, taxNumber, taxOffice, notes } = req.body;
+    const customerFields = { name, email, phone, address, taxNumber, taxOffice, notes };
+    
+    // Remove undefined fields
+    Object.keys(customerFields).forEach(key => customerFields[key] === undefined && delete customerFields[key]);
+
     try {
         let customer = await Customer.findOne({ _id: req.params.id, company: req.user.company });
         if (!customer) return res.status(404).json({ msg: 'Customer not found' });

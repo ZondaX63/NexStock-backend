@@ -68,7 +68,7 @@ async function recomputePartnerBalances(companyId) {
                     company: new mongoose.Types.ObjectId(companyId), 
                     customerOrSupplier: customer._id, 
                     type: 'sale',
-                    status: { $ne: 'rejected' } // Don't count rejected invoices
+                    status: { $in: ['approved', 'paid'] } // Only count approved or paid
                 } 
             },
             { $group: { _id: null, total: { $sum: '$totalAmount' } } }
@@ -104,7 +104,7 @@ async function recomputePartnerBalances(companyId) {
                     company: new mongoose.Types.ObjectId(companyId), 
                     customerOrSupplier: supplier._id, 
                     type: 'purchase',
-                    status: { $ne: 'rejected' }
+                    status: { $in: ['approved', 'paid'] }
                 } 
             },
             { $group: { _id: null, total: { $sum: '$totalAmount' } } }

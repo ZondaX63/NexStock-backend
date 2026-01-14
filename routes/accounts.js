@@ -23,7 +23,12 @@ router.post('/', auth, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { name, type, balance, currency, cariType, email, phone, address } = req.body;
+    const { 
+        name, type, balance, currency, cariType, email, phone, address,
+        bankName, iban, branchCode, accountNumber,
+        creditLimit, cutoffDay, paymentDay
+    } = req.body;
+    
     let partnerId = null;
     let cari = null;
     if (type === 'cari') {
@@ -49,11 +54,18 @@ router.post('/', auth, async (req, res) => {
     const account = new Account({
       name,
       type,
-      balance: 0, // Start with 0, let transaction set it
+      balance: 0,
       currency: currency || 'TRY',
       company: req.user.company,
       cariType: type === 'cari' ? cariType : null,
-      partnerId: type === 'cari' ? partnerId : null
+      partnerId: type === 'cari' ? partnerId : null,
+      bankName: type === 'bank' ? bankName : undefined,
+      iban: type === 'bank' ? iban : undefined,
+      branchCode: type === 'bank' ? branchCode : undefined,
+      accountNumber: type === 'bank' ? accountNumber : undefined,
+      creditLimit: type === 'credit_card' ? creditLimit : undefined,
+      cutoffDay: type === 'credit_card' ? cutoffDay : undefined,
+      paymentDay: type === 'credit_card' ? paymentDay : undefined
     });
     await account.save({ session });
 

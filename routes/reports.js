@@ -36,7 +36,7 @@ router.get('/debt-credit', [auth, admin], async (req, res) => {
 router.get('/income-expense', [auth, admin], async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        let filter = {};
+        let filter = { company: new (require('mongoose').Types.ObjectId)(req.user.company) };
         if (startDate || endDate) {
             filter.date = {};
             if (startDate) filter.date.$gte = new Date(startDate);
@@ -60,7 +60,7 @@ router.get('/income-expense', [auth, admin], async (req, res) => {
 // Stok Hareket Raporu
 router.get('/stock-movements', [auth, admin], async (req, res) => {
     try {
-        const products = await Product.find();
+        const products = await Product.find({ company: req.user.company });
         // Basit stok durumu ve hareket özeti
         const stockReport = products.map(p => ({
             name: p.name,
@@ -80,7 +80,7 @@ router.get('/stock-movements', [auth, admin], async (req, res) => {
 router.get('/cash-flow', [auth, admin], async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        let filter = {};
+        let filter = { company: req.user.company };
         if (startDate || endDate) {
             filter.date = {};
             if (startDate) filter.date.$gte = new Date(startDate);

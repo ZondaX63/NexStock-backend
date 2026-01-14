@@ -10,6 +10,10 @@ exports.getDashboardInsights = async (req, res) => {
         // Ensure company is an ObjectId for aggregation
         const companyId = new mongoose.Types.ObjectId(req.user.company);
 
+        // Date for context (Last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         // Fetch data for AI context
         const criticalStocks = await Product.find({
             company: companyId,
@@ -90,19 +94,36 @@ exports.chatWithData = async (req, res) => {
             $expr: { $lte: ["$quantity", "$criticalStockLevel"] }
         }).select('name quantity').limit(10);
 
-        // 2. Sales Summary (Last 30 Days)
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const salesStats = await Invoice.aggregate([
-            { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
-            { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+        const [salesStats, topProducts, totalProducts] = await Promise.all([
+            Invoice.aggregate([
+                { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+                { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+            ]),
+            Invoice.aggregate([
+                { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+                { $unwind: '$products' },
+                { $group: { _id: '$products.product', totalSold: { $sum: '$products.quantity' } } },
+                { $sort: { totalSold: -1 } },
+                { $limit: 5 },
+                { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'info' } },
+                { $unwind: '$info' },
+                { $project: { name: '$info.name', totalSold: 1 } }
+            ]),
+            Product.countDocuments({ company: companyId })
         ]);
 
         const context = `
-            STRATEJİK VERİLER:
-            - Kritik Stoktaki Ürünler (${criticalStocks.length} adet): ${criticalStocks.map(s => `${s.name} (${s.quantity})`).join(', ')}
-            - Son 30 Gün Satış: ${salesStats[0]?.total || 0} TL (${salesStats[0]?.count || 0} işlem)
+            BUGÜNÜN TARİHİ: ${new Date().toLocaleDateString('tr-TR')}
+            
+            İŞLETME VERİLERİ (SON 30 GÜN):
+            - Toplam Ürün Çeşidi: ${totalProducts}
+            - Kritik Stoktaki Ürünler (${criticalStocks.length} adet): ${criticalStocks.map(s => `${s.name} (${s.quantity})`).join(', ') || 'Bulunmuyor'}
+            - Toplam Satış Cirosu: ${salesStats[0]?.total || 0} TL
+            - Toplam Satış İşlemi: ${salesStats[0]?.count || 0} adet
+            - En Çok Satan Ürünler: ${topProducts.map(p => `${p.name} (${p.totalSold} adet)`).join(', ') || 'Veri yok'}
         `;
 
         const prompt = `
@@ -243,6 +264,26 @@ exports.analyzeReceipt = async (req, res) => {
         text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
         const extractedData = JSON.parse(text);
+
+        // --- ENHANCEMENT: Product Matching ---
+        // Try to find matching products in DB for the extracted names
+        if (extractedData.products && Array.isArray(extractedData.products)) {
+            const companyId = new mongoose.Types.ObjectId(req.user.company);
+            const userProducts = await Product.find({ company: companyId }).select('name _id');
+
+            for (let p of extractedData.products) {
+                // Simple case-insensitive match
+                const match = userProducts.find(up =>
+                    up.name.toLowerCase().includes(p.name.toLowerCase()) ||
+                    p.name.toLowerCase().includes(up.name.toLowerCase())
+                );
+                if (match) {
+                    p.productId = match._id;
+                }
+            }
+        }
+        // -------------------------------------
+
         res.status(200).json(extractedData);
     } catch (error) {
         console.error('Receipt Analysis Error:', error);

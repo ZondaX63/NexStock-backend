@@ -106,5 +106,42 @@ describe('E2E Integration Flow', () => {
         expect(res.statusCode).toBe(200);
         // Initial was 100, sold 10, should be 90
         expect(res.body.product.quantity).toBe(90);
+
+        // Verify Customer Balance is Updated
+        const custRes = await request(app)
+            .get(`/api/customers/${customerId}`)
+            .set('x-auth-token', token);
+        // Sale of 10 items * 60 price = 600
+        expect(custRes.body.customer.balance).toBe(600);
+    });
+
+    it('Step 6: Update Approved Invoice (Should fail or update stock - but currently doesn\'t update stock)', async () => {
+        // Find the invoice
+        const invRes = await request(app)
+            .get('/api/invoices')
+            .set('x-auth-token', token);
+        const invoice = invRes.body.invoices[0];
+
+        // Try to change quantity from 10 to 20
+        const updateRes = await request(app)
+            .put(`/api/invoices/${invoice._id}`)
+            .set('x-auth-token', token)
+            .send({
+                ...invoice,
+                products: [{
+                    product: productId,
+                    quantity: 20,
+                    price: 60
+                }]
+            });
+        
+        // If status is 'approved', PUT might be restricted or we verify stock
+        if (updateRes.statusCode === 200) {
+            const prodRes = await request(app)
+                .get(`/api/products/${productId}`)
+                .set('x-auth-token', token);
+            console.log('Stock after approved invoice update:', prodRes.body.product.quantity);
+            // If the bug exists, stock will still be 90 instead of 80
+        }
     });
 });

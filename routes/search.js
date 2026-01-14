@@ -13,79 +13,75 @@ router.get('/products', auth, async (req, res) => {
         
         console.log('🔍 Arama isteği:', { q, userId: req.user.id, company: req.user.company });
         
-        if (!q || q.trim().length === 0) {
-            return res.json({ success: true, products: [], groupedResults: [] });
-        }
-
-        const searchTerm = q.trim();
         let allProducts = [];
         let isOemGroupSearch = false;
+        const searchTerm = q ? q.trim() : '';
 
-        // 1. Önce OEM kodu ile direkt arama
-        console.log('1️⃣ OEM araması başlıyor...', searchTerm);
-        const oemProducts = await Product.find({
-            oem: { $regex: searchTerm, $options: 'i' },
-            company: req.user.company
-        }).populate('category brand', 'name').lean();
-        
-        console.log('OEM sonuçları:', oemProducts.length);
-
-        if (oemProducts.length > 0) {
-            // OEM bulundu, aynı OEM'e sahip tüm ürünleri getir
-            const oemCodes = [...new Set(oemProducts.map(p => p.oem))];
-            console.log('Bulunan OEM kodları:', oemCodes);
-            allProducts = await Product.find({
-                oem: { $in: oemCodes },
+        if (searchTerm.length > 0) {
+            // 1. Önce OEM kodu ile direkt arama
+            console.log('1️⃣ OEM araması başlıyor...', searchTerm);
+            const oemProducts = await Product.find({
+                oem: { $regex: searchTerm, $options: 'i' },
                 company: req.user.company
             }).populate('category brand', 'name').lean();
-            console.log('OEM grubundaki toplam ürün:', allProducts.length);
-            isOemGroupSearch = true;
-        } else {
-            // 2. OEM bulunamadı, manufacturerCode ile arama
-            console.log('2️⃣ manufacturerCode araması başlıyor...', searchTerm);
-            const manufacturerCodeProducts = await Product.find({
-                manufacturerCode: { $regex: searchTerm, $options: 'i' },
-                company: req.user.company
-            }).populate('category brand', 'name').lean();
+            
+            console.log('OEM sonuçları:', oemProducts.length);
 
-            console.log('manufacturerCode sonuçları:', manufacturerCodeProducts.length);
-            if (manufacturerCodeProducts.length > 0) {
-                console.log('Bulunan ürünler:', manufacturerCodeProducts.map(p => ({
-                    name: p.name,
-                    manufacturerCode: p.manufacturerCode,
-                    oem: p.oem
-                })));
-                // ManufacturerCode bulundu, aynı OEM'e sahip tüm ürünleri getir
-                const oemCodes = [...new Set(manufacturerCodeProducts.map(p => p.oem))];
-                console.log('İlgili OEM kodları:', oemCodes);
+            if (oemProducts.length > 0) {
+                // OEM bulundu, aynı OEM'e sahip tüm ürünleri getir
+                const oemCodes = [...new Set(oemProducts.map(p => p.oem))];
+                console.log('Bulunan OEM kodları:', oemCodes);
                 allProducts = await Product.find({
                     oem: { $in: oemCodes },
                     company: req.user.company
                 }).populate('category brand', 'name').lean();
                 console.log('OEM grubundaki toplam ürün:', allProducts.length);
-                console.log('Bulunan tüm ürünler:', allProducts.map(p => ({
-                    name: p.name,
-                    manufacturerCode: p.manufacturerCode,
-                    oem: p.oem
-                })));
                 isOemGroupSearch = true;
             } else {
-                // 3. OEM ve manufacturerCode bulunamadı, ürün adı, SKU, marka ile kısmi arama
-                let filter = {
-                    company: req.user.company,
-                    $or: [
-                        { name: { $regex: searchTerm, $options: 'i' } },
-                        { sku: { $regex: searchTerm, $options: 'i' } },
-                        { manufacturer: { $regex: searchTerm, $options: 'i' } },
-                        { barcode: { $regex: searchTerm, $options: 'i' } },
-                        { tags: { $in: [new RegExp(searchTerm, 'i')] } }
-                    ]
-                };
+                // 2. OEM bulunamadı, manufacturerCode ile arama
+                console.log('2️⃣ manufacturerCode araması başlıyor...', searchTerm);
+                const manufacturerCodeProducts = await Product.find({
+                    manufacturerCode: { $regex: searchTerm, $options: 'i' },
+                    company: req.user.company
+                }).populate('category brand', 'name').lean();
 
-                // Ek filtreler
-                if (minStock) filter.quantity = { ...filter.quantity, $gte: Number(minStock) };
-                if (maxStock) filter.quantity = { ...filter.quantity, $lte: Number(maxStock) };
+                console.log('manufacturerCode sonuçları:', manufacturerCodeProducts.length);
+                if (manufacturerCodeProducts.length > 0) {
+                    // ManufacturerCode bulundu, aynı OEM'e sahip tüm ürünleri getir
+                    const oemCodes = [...new Set(manufacturerCodeProducts.map(p => p.oem))];
+                    allProducts = await Product.find({
+                        oem: { $in: oemCodes },
+                        company: req.user.company
+                    }).populate('category brand', 'name').lean();
+                    isOemGroupSearch = true;
+                } else {
+                    // 3. OEM ve manufacturerCode bulunamadı, ürün adı, SKU, marka ile kısmi arama
+                    let filter = {
+                        company: req.user.company,
+                        $or: [
+                            { name: { $regex: searchTerm, $options: 'i' } },
+                            { sku: { $regex: searchTerm, $options: 'i' } },
+                            { manufacturer: { $regex: searchTerm, $options: 'i' } },
+                            { barcode: { $regex: searchTerm, $options: 'i' } },
+                            { tags: { $in: [new RegExp(searchTerm, 'i')] } }
+                        ]
+                    };
 
+                    // Ek filtreler
+                    if (minStock) filter.quantity = { ...filter.quantity, $gte: Number(minStock) };
+                    if (maxStock) filter.quantity = { ...filter.quantity, $lte: Number(maxStock) };
+
+                    allProducts = await Product.find(filter).populate('category brand', 'name').lean();
+                }
+            }
+        } else {
+            // q yoksa veya boşsa ama filtreler varsa
+            let filter = { company: req.user.company };
+            if (minStock) filter.quantity = { ...filter.quantity, $gte: Number(minStock) };
+            if (maxStock) filter.quantity = { ...filter.quantity, $lte: Number(maxStock) };
+
+            // Eğer q yoksa ve başka hiçbir filtre de yoksa boş dönmemek için tüm ürünleri de getirebiliriz
+            if (Object.keys(filter).length > 1) {
                 allProducts = await Product.find(filter).populate('category brand', 'name').lean();
             }
         }

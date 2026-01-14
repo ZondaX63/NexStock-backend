@@ -211,9 +211,14 @@ router.put('/:id', auth, async (req, res) => {
     try {
         let invoice = await Invoice.findOne({ _id: req.params.id, company: req.user.company });
         if (!invoice) return res.status(404).json({ msg: 'Invoice not found' });
-        if (invoice.status !== 'draft' && req.user.role !== 'admin') {
-            return res.status(403).json({ msg: 'Sadece taslak faturalar düzenlenebilir.' });
+        
+        // Onaylanmış veya ödenmiş faturalar düzenlenemez (Admin dahil, önce taslağa çekilmeli veya silinmeli)
+        if (invoice.status !== 'draft') {
+            return res.status(403).json({ 
+                msg: 'Sadece taslak faturalar düzenlenebilir. Onaylanmış faturaları düzenlemek için önce silip tekrar oluşturun veya durumunu değiştirin (not: durum değişikliği otomatik stok güncellemez).' 
+            });
         }
+        
         invoice = await Invoice.findByIdAndUpdate(req.params.id, { $set: invoiceFields }, { new: true });
         res.json(invoice);
     } catch (err) {

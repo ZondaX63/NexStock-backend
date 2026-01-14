@@ -99,8 +99,12 @@ router.get('/:id', auth, async (req, res) => {
 // @desc    Update a supplier
 // @access  Private
 router.put('/:id', auth, async (req, res) => {
-    const { name, contactPerson, email, phone } = req.body;
-    const supplierFields = { name, contactPerson, email, phone };
+    const { name, contactPerson, email, phone, taxNumber, taxOffice, notes } = req.body;
+    const supplierFields = { name, contactPerson, email, phone, taxNumber, taxOffice, notes };
+    
+    // Remove undefined fields
+    Object.keys(supplierFields).forEach(key => supplierFields[key] === undefined && delete supplierFields[key]);
+
     try {
         let supplier = await Supplier.findOne({ _id: req.params.id, company: req.user.company });
         if (!supplier) return res.status(404).json({ msg: 'Supplier not found' });

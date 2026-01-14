@@ -29,15 +29,15 @@ const createAdminUser = async () => {
         let user = await User.findOne({ email: 'admin@nexstock.com' });
         
         if (user) {
-            console.log('Admin user already exists');
+            console.log('Admin user already exists. Updating password to admin123...');
+            user.password = 'admin123';
+            await user.save();
+            console.log('Admin password updated successfully!');
         } else {
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash('admin123', salt);
-
             user = new User({
                 name: 'Admin',
                 email: 'admin@nexstock.com',
-                password: hashedPassword,
+                password: 'admin123',
                 role: 'admin',
                 company: company._id
             });

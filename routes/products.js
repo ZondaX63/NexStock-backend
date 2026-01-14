@@ -11,6 +11,33 @@ const upload = multer({ storage: multer.memoryStorage() });
 const { parseExcel, generateExcel } = require('../services/excelService');
 
 // ... existing imports ...
+// @route   GET api/products/next-sku
+// @desc    Get next suggested SKU
+// @access  Private
+router.get('/next-sku', auth, async (req, res) => {
+    try {
+        const lastProduct = await Product.findOne({ company: req.user.company }).sort({ createdAt: -1 });
+        let nextSku = 'STK-0001';
+
+        if (lastProduct && lastProduct.sku) {
+            const match = lastProduct.sku.match(/(\d+)$/);
+            if (match) {
+                const number = parseInt(match[0], 10);
+                const prefix = lastProduct.sku.slice(0, match.index);
+                const nextNumber = (number + 1).toString().padStart(match[0].length, '0');
+                nextSku = prefix + nextNumber;
+            } else {
+                // If last SKU doesn't end with number, try standard format
+                nextSku = `STK-${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+        }
+        res.json({ sku: nextSku });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
 // @route   POST api/products
 // @desc    Create a product
 // @access  Private
