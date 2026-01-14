@@ -73,16 +73,50 @@ exports.getDashboardInsights = async (req, res) => {
 exports.chatWithData = async (req, res) => {
     try {
         const { message } = req.body;
+        const company = req.user.company;
         if (!message) return res.status(400).json({ message: 'Message is required' });
 
-        // Simple implementation for now
-        const result = await textModel.generateContent(`İşletme sahibi sana şunu soruyor: "${message}". Bir asistan gibi kısa bir cevap ver.`);
+        // Fetch succinct context
+        // 1. Critical Stock
+        const criticalStocks = await Product.find({
+            company,
+            trackStock: true,
+            $expr: { $lte: ["$quantity", "$criticalStockLevel"] }
+        }).select('name quantity').limit(10);
+
+        // 2. Sales Summary (Last 30 Days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const salesStats = await Invoice.aggregate([
+            { $match: { company, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+            { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+        ]);
+
+        const context = `
+            STRATEJİK VERİLER:
+            - Kritik Stoktaki Ürünler (${criticalStocks.length} adet): ${criticalStocks.map(s => `${s.name} (${s.quantity})`).join(', ')}
+            - Son 30 Gün Satış: ${salesStats[0]?.total || 0} TL (${salesStats[0]?.count || 0} işlem)
+        `;
+
+        const prompt = `
+            Sen "NexStock Asistan" adında yardımsever ve zeki bir iş analistisin. 
+            İşletme sahibi sana şu soruyu sordu: "${message}"
+
+            İşletmenin anlık durumu hakkında bilgiler:
+            ${context}
+
+            Bu verileri kullanarak soruya kısa, net ve faydalı bir cevap ver. 
+            Eğer soru verilerle ilgili değilse genel bir işletme asistanı gibi cevapla.
+            Samimi ama profesyonel ol.
+        `;
+
+        const result = await textModel.generateContent(prompt);
         const response = await result.response;
         res.status(200).json({ reply: response.text() });
     } catch (error) {
         console.error('AI Chat Error Details:', JSON.stringify(error, null, 2));
-        console.error('Full Error Object:', error);
-        res.status(500).json({ message: 'Error processing chat', error: error.message, details: error.toString() });
+        res.status(500).json({ message: 'Error processing chat', error: error.message });
     }
 };
 

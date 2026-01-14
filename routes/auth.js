@@ -136,7 +136,7 @@ router.post('/login', [
 // @route   POST api/auth/add-user
 // @desc    Add a new user (personnel) to the company (admin only)
 // @access  Private/Admin
-router.post('/add-user', [auth, admin, check('name', 'Name is required').not().isEmpty(), check('email', 'Please include a valid email').isEmail(), check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }), check('role', 'Role is required').isIn(['user', 'admin'])], async (req, res) => {
+router.post('/add-user', [auth, admin, check('name', 'Name is required').not().isEmpty(), check('email', 'Please include a valid email').isEmail(), check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }), check('role', 'Role is required').isIn(['user', 'admin', 'manager', 'staff'])], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -202,13 +202,13 @@ router.get('/me', auth, async (req, res) => {
     try {
         const mongoose = require('mongoose');
         const connectDB = require('../config/db');
-        
+
         // Ensure DB connection
         if (mongoose.connection.readyState !== 1) {
             console.log('DB not connected in /auth/me, attempting to connect...');
             await connectDB();
         }
-        
+
         // req.user.id is coming from the auth middleware
         const user = await User.findById(req.user.id).select('-password').populate('company', 'name');
         if (!user) {

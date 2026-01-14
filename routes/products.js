@@ -1,16 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { auth, admin } = require('../middleware/authMiddleware');
+const { auth, admin, manager } = require('../middleware/authMiddleware');
 const Product = require('../models/Product');
 const { check } = require('express-validator');
 const Notification = require('../models/Notification');
 const logAction = require('../middleware/logAction');
 const mongoose = require('mongoose');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+const { parseExcel, generateExcel } = require('../services/excelService');
 
+// ... existing imports ...
 // @route   POST api/products
 // @desc    Create a product
 // @access  Private
-router.post('/', [auth, [
+router.post('/', [auth, manager, [
     check('name', 'Name is required').not().isEmpty(),
     check('sku', 'SKU is required').not().isEmpty(),
     check('unit', 'Unit is required').not().isEmpty(),
@@ -68,6 +72,116 @@ router.post('/', [auth, [
             company: req.user.company
         });
         res.json(product);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// @route   POST api/products/import
+// @desc    Import products from Excel
+// @access  Private/Manager
+router.post('/import', [auth, manager, upload.single('file')], async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ msg: 'No file uploaded' });
+        }
+
+        const data = parseExcel(req.file.buffer);
+        const results = {
+            processed: 0,
+            created: 0,
+            updated: 0,
+            errors: []
+        };
+
+        for (const row of data) {
+            try {
+                // Basic validation
+                if (!row.Name || !row.SKU) {
+                    results.errors.push({ row, error: 'Name and SKU are required. Headers: Name, SKU, ...' });
+                    continue;
+                }
+
+                const productData = {
+                    name: row.Name,
+                    sku: row.SKU,
+                    description: row.Description || '',
+                    barcode: row.Barcode || '',
+                    unit: row.Unit || 'Adet',
+                    purchasePrice: row.PurchasePrice || 0,
+                    salePrice: row.SalePrice || 0,
+                    quantity: row.Quantity || 0,
+                    criticalStockLevel: row.CriticalStock || 10,
+                    trackStock: true,
+                    brand: null,
+                    category: null,
+                    company: req.user.company
+                };
+
+                let product = await Product.findOne({ sku: row.SKU, company: req.user.company });
+
+                if (product) {
+                    // Update
+                    product = await Product.findOneAndUpdate(
+                        { sku: row.SKU, company: req.user.company },
+                        { $set: productData },
+                        { new: true }
+                    );
+                    results.updated++;
+                } else {
+                    // Create
+                    product = new Product(productData);
+                    await product.save();
+                    results.created++;
+                }
+                results.processed++;
+            } catch (err) {
+                results.errors.push({ row, error: err.message });
+            }
+        }
+
+        await logAction({
+            user: req.user.id,
+            action: 'import',
+            module: 'product',
+            message: `${req.user.name}, Excel ile ${results.processed} ürün aktardı.`,
+            company: req.user.company
+        });
+
+        res.json(results);
+
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
+
+// @route   GET api/products/export
+// @desc    Export products to Excel
+// @access  Private
+router.get('/export', auth, async (req, res) => {
+    try {
+        const products = await Product.find({ company: req.user.company }).lean();
+
+        const data = products.map(p => ({
+            Name: p.name,
+            SKU: p.sku,
+            Description: p.description,
+            Barcode: p.barcode,
+            Unit: p.unit,
+            PurchasePrice: p.purchasePrice,
+            SalePrice: p.salePrice,
+            Quantity: p.quantity,
+            CriticalStock: p.criticalStockLevel
+        }));
+
+        const buffer = generateExcel(data, 'Products');
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=products.xlsx');
+        res.send(buffer);
+
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');
@@ -170,7 +284,7 @@ router.get('/stats', auth, async (req, res) => {
 // @route   PUT api/products/:id
 // @desc    Update a product
 // @access  Private
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', [auth, manager], async (req, res) => {
     const {
         name, sku, description, barcode, tags, unit,
         purchasePrice, salePrice, quantity, criticalStockLevel, trackStock,

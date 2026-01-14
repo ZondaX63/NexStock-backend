@@ -23,9 +23,25 @@ const auth = async (req, res, next) => {
 
 const admin = (req, res, next) => {
     if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ msg: 'Access denied' });
+        return res.status(403).json({ msg: 'Access denied: Admin only' });
     }
     next();
 };
 
-module.exports = { auth, admin };
+const manager = (req, res, next) => {
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'manager')) {
+        return res.status(403).json({ msg: 'Access denied: Manager or Admin only' });
+    }
+    next();
+};
+
+const staff = (req, res, next) => {
+    // Staff is the lowest level, so all valid users (who passed auth) are at least staff
+    // This middleware exists mostly for clarity or if we have 'guest' roles later
+    if (!req.user) {
+        return res.status(401).json({ msg: 'Authorization denied' });
+    }
+    next();
+};
+
+module.exports = { auth, admin, manager, staff };
