@@ -62,9 +62,13 @@ exports.getDashboardInsights = async (req, res) => {
         `;
 
         const response = await generateText(prompt);
-        const text = response.text();
+        // response may be an object with a `text()` helper or a plain string
+        const text = (typeof response === 'string') ? response : (response && typeof response.text === 'function' ? response.text() : String(response));
 
-        res.status(200).json({ insight: text });
+        // Ensure result is Markdown-friendly: make sure it starts with a header if AI didn't
+        const md = text.trim().startsWith('#') ? text : `# Yapay Zeka Analiz Raporu\n\n${text}`;
+
+        res.status(200).json({ insight: md, insight_markdown: md });
     } catch (error) {
         console.error('AI Insight Error:', error);
         res.status(500).json({ message: 'Error generating AI insights', error: error.message });
@@ -258,12 +262,34 @@ exports.analyzeReceipt = async (req, res) => {
         // If getting errors with PDF on specific legacy models, we might need a different approach,
         // but current setup (flash-latest) usually handles it.
         const response = await generateMultimodal(prompt, contentPart);
-        let text = response.text();
+        // Get plain text from response
+        let text = (typeof response === 'string') ? response : (response && typeof response.text === 'function' ? response.text() : String(response));
 
-        // Clean JSON from markdown if exists
+        // Clean common markdown fences
         text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
-        const extractedData = JSON.parse(text);
+        // Try to extract JSON substring from the AI response to be tolerant of extra text
+        let extractedData = null;
+        try {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                extractedData = JSON.parse(jsonMatch[0]);
+            } else {
+                // As fallback, attempt to parse the whole text
+                extractedData = JSON.parse(text);
+            }
+        } catch (parseErr) {
+            // Log parsing error and return raw AI output so frontend can show it to user
+            const fs = require('fs');
+            const logMsg = `[${new Date().toISOString()}] OCR JSON Parse Error: ${parseErr.message} -- Response: ${text.slice(0,200)}\n`;
+            try { fs.appendFileSync('backend-error.log', logMsg); } catch (e) {}
+
+            return res.status(200).json({
+                message: 'Could not parse JSON from AI response, returning raw output.',
+                raw: text,
+                parsed: null
+            });
+        }
 
         // --- ENHANCEMENT: Product Matching ---
         // Try to find matching products in DB for the extracted names
