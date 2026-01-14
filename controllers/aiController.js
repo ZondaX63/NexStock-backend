@@ -1,4 +1,4 @@
-const { textModel, visionModel } = require('../services/aiService');
+const { generateText, generateMultimodal } = require('../services/aiService');
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Invoice = require('../models/Invoice');
@@ -7,25 +7,23 @@ const Category = require('../models/Category');
 
 exports.getDashboardInsights = async (req, res) => {
     try {
-        const company = req.user.company;
-        const today = new Date();
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 30);
+        // Ensure company is an ObjectId for aggregation
+        const companyId = new mongoose.Types.ObjectId(req.user.company);
 
         // Fetch data for AI context
         const criticalStocks = await Product.find({
-            company,
+            company: companyId,
             trackStock: true,
             $expr: { $lte: ["$quantity", "$criticalStockLevel"] }
         }).select('name quantity criticalStockLevel');
 
         const sales = await Invoice.aggregate([
-            { $match: { company, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+            { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
             { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
         ]);
 
         const topProducts = await Invoice.aggregate([
-            { $match: { company, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+            { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
             { $unwind: '$products' },
             { $group: { _id: '$products.product', totalSold: { $sum: '$products.quantity' } } },
             { $sort: { totalSold: -1 } },
@@ -59,8 +57,7 @@ exports.getDashboardInsights = async (req, res) => {
             Lütfen profesyonel ama samimi bir ton kullan. Raporu markdown formatında ver.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         const text = response.text();
 
         res.status(200).json({ insight: text });
@@ -73,13 +70,22 @@ exports.getDashboardInsights = async (req, res) => {
 exports.chatWithData = async (req, res) => {
     try {
         const { message } = req.body;
-        const company = req.user.company;
+
+        // Defensive check for user company
+        if (!req.user || !req.user.company) {
+            console.error('[AI Chat] User or company missing in request.');
+            return res.status(401).json({ message: 'User company information not found' });
+        }
+
+        // Ensure company is an ObjectId for aggregation
+        const companyId = new mongoose.Types.ObjectId(req.user.company);
+
         if (!message) return res.status(400).json({ message: 'Message is required' });
 
         // Fetch succinct context
         // 1. Critical Stock
         const criticalStocks = await Product.find({
-            company,
+            company: companyId,
             trackStock: true,
             $expr: { $lte: ["$quantity", "$criticalStockLevel"] }
         }).select('name quantity').limit(10);
@@ -89,7 +95,7 @@ exports.chatWithData = async (req, res) => {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const salesStats = await Invoice.aggregate([
-            { $match: { company, type: 'sale', date: { $gte: thirtyDaysAgo } } },
+            { $match: { company: companyId, type: 'sale', date: { $gte: thirtyDaysAgo } } },
             { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
         ]);
 
@@ -111,12 +117,20 @@ exports.chatWithData = async (req, res) => {
             Samimi ama profesyonel ol.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         res.status(200).json({ reply: response.text() });
     } catch (error) {
-        console.error('AI Chat Error Details:', JSON.stringify(error, null, 2));
-        res.status(500).json({ message: 'Error processing chat', error: error.message });
+        // Log to file for visibility
+        const fs = require('fs');
+        const logMsg = `[${new Date().toISOString()}] AI Chat Error: ${error.stack || error}\n`;
+        fs.appendFileSync('backend-error.log', logMsg);
+
+        console.error('[AI Chat] CRITICAL ERROR:', error);
+        res.status(500).json({
+            message: 'Error processing chat',
+            error: error.message,
+            stack: error.stack
+        });
     }
 };
 
@@ -134,8 +148,7 @@ exports.generateDescription = async (req, res) => {
             Sadece açıklama metnini döndür. Türkçe olsun.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         res.status(200).json({ description: response.text() });
     } catch (error) {
         console.error('Description Gen Error:', error);
@@ -161,8 +174,7 @@ exports.generateEmail = async (req, res) => {
             Lütfen sadece konu ve içeriği düzgün bir formatta ver. JSON veya karmaşık yapı olmasın, doğrudan kopyalanıp yapıştırılabilecek bir metin olsun.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         res.status(200).json({ emailContent: response.text() });
     } catch (error) {
         console.error('Email Gen Error:', error);
@@ -224,8 +236,7 @@ exports.analyzeReceipt = async (req, res) => {
         // Note: For gemini-flash-latest or gemini-1.5, PDF support is native.
         // If getting errors with PDF on specific legacy models, we might need a different approach,
         // but current setup (flash-latest) usually handles it.
-        const result = await visionModel.generateContent([prompt, contentPart]);
-        const response = await result.response;
+        const response = await generateMultimodal(prompt, contentPart);
         let text = response.text();
 
         // Clean JSON from markdown if exists
@@ -242,9 +253,9 @@ exports.analyzeReceipt = async (req, res) => {
 exports.predictStock = async (req, res) => {
     try {
         const { productId } = req.params;
-        const company = req.user.company;
+        const companyId = new mongoose.Types.ObjectId(req.user.company);
 
-        const product = await Product.findOne({ _id: productId, company });
+        const product = await Product.findOne({ _id: productId, company: companyId });
         if (!product) return res.status(404).json({ message: 'Product not found' });
 
         // Get last 90 days of sales for this product
@@ -254,7 +265,7 @@ exports.predictStock = async (req, res) => {
         const salesData = await Invoice.aggregate([
             {
                 $match: {
-                    company,
+                    company: companyId,
                     type: 'sale',
                     date: { $gte: ninetyDaysAgo },
                     'products.product': new mongoose.Types.ObjectId(productId)
@@ -284,8 +295,7 @@ exports.predictStock = async (req, res) => {
             Lütfen cevapları Türkçe ve sadece 2-3 kısa madde halinde ver.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         res.status(200).json({ forecast: response.text() });
     } catch (error) {
         console.error('Stock Predict Error:', error);
@@ -316,8 +326,7 @@ exports.semanticSearch = async (req, res) => {
             Eğer hiçbir alaka kuramıyorsan "Bulunamadı" döndür.
         `;
 
-        const result = await textModel.generateContent(prompt);
-        const response = await result.response;
+        const response = await generateText(prompt);
         const suggestionText = response.text();
 
         if (suggestionText.includes('Bulunamadı')) {

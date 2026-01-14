@@ -11,14 +11,16 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Connect Database
-console.log('Attempting to connect to DB...');
-console.log('MONGO_URI present:', !!process.env.MONGO_URI);
-connectDB().then(() => {
-  console.log('DB Connection Initialized');
-}).catch((err) => {
-  console.error('Database connection failed:', err.message);
-  // process.exit(1); // Removed for serverless stability
-});
+if (process.env.NODE_ENV !== 'test') {
+  console.log('Attempting to connect to DB...');
+  console.log('MONGO_URI present:', !!process.env.MONGO_URI);
+  connectDB().then(() => {
+    console.log('DB Connection Initialized');
+  }).catch((err) => {
+    console.error('Database connection failed:', err.message);
+    // process.exit(1); // Removed for serverless stability
+  });
+}
 
 // Middleware - CORS Configuration
 const corsOptions = {
