@@ -49,7 +49,7 @@ router.post('/', [auth, manager, [
     const {
         name, sku, description, barcode, tags, unit,
         purchasePrice, salePrice, quantity, criticalStockLevel, trackStock,
-        brand, category, shelfLocation, currency, priceUSD, priceEUR
+        brand, category, shelfLocation, currency, priceUSD, priceEUR, oem
     } = req.body;
 
     console.log('Received product data:', req.body);
@@ -68,7 +68,7 @@ router.post('/', [auth, manager, [
             name, sku, description, barcode, tags, unit,
             purchasePrice, salePrice, quantity, criticalStockLevel, trackStock,
             brand: brandId, category: categoryId, shelfLocation, currency, priceUSD, priceEUR,
-            company: req.user.company
+            oem, company: req.user.company
         });
 
         await product.save();
@@ -143,6 +143,7 @@ router.post('/import', [auth, manager, upload.single('file')], async (req, res) 
                     trackStock: true,
                     brand: null,
                     category: null,
+                    oem: row.OEM || '',
                     company: req.user.company
                 };
 
@@ -200,7 +201,8 @@ router.get('/export', auth, async (req, res) => {
             PurchasePrice: p.purchasePrice,
             SalePrice: p.salePrice,
             Quantity: p.quantity,
-            CriticalStock: p.criticalStockLevel
+            CriticalStock: p.criticalStockLevel,
+            OEM: p.oem
         }));
 
         const buffer = generateExcel(data, 'Products');
@@ -248,7 +250,9 @@ router.get('/', auth, async (req, res) => {
 
         // If limit is 0, return all documents, otherwise paginate
         if (parseInt(limit, 10) === 0) {
-            const products = await Product.find(query).sort({ [sort]: order === 'asc' ? 1 : -1 });
+            const products = await Product.find(query)
+                .sort({ [sort]: order === 'asc' ? 1 : -1 })
+                .populate('category brand');
             return res.json({ products });
         }
 
@@ -261,6 +265,7 @@ router.get('/', auth, async (req, res) => {
             page: parseInt(page, 10),
             limit: parseInt(limit, 10),
             sort: { [sort]: order === 'asc' ? 1 : -1 },
+            populate: ['category', 'brand'],
         };
 
         const result = await Product.paginate(query, options);
@@ -315,7 +320,7 @@ router.put('/:id', [auth, manager], async (req, res) => {
     const {
         name, sku, description, barcode, tags, unit,
         purchasePrice, salePrice, quantity, criticalStockLevel, trackStock,
-        brand, category, shelfLocation, currency, priceUSD, priceEUR
+        brand, category, shelfLocation, currency, priceUSD, priceEUR, oem
     } = req.body;
 
     const productFields = {};
@@ -355,6 +360,7 @@ router.put('/:id', [auth, manager], async (req, res) => {
     if (currency) productFields.currency = currency;
     if (priceUSD !== undefined) productFields.priceUSD = priceUSD;
     if (priceEUR !== undefined) productFields.priceEUR = priceEUR;
+    if (oem !== undefined) productFields.oem = oem;
 
     try {
         let product = await Product.findOne({ _id: req.params.id, company: req.user.company });
