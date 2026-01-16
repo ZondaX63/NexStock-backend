@@ -19,8 +19,8 @@ const ProductSchema = new mongoose.Schema({
         default: '',
     },
     oem: {
-        type: String,
-        default: '',
+        type: [String],
+        default: [],
         index: true, // OEM aramaları için indeks
     },
     manufacturerCode: {
@@ -55,6 +55,23 @@ const ProductSchema = new mongoose.Schema({
         type: String,
         default: 'TRY',
         enum: ['TRY', 'USD', 'EUR', 'GBP'],
+    },
+    purchaseCurrency: {
+        type: String,
+        default: 'TRY',
+        enum: ['TRY', 'USD', 'EUR', 'GBP'],
+    },
+    saleCurrency: {
+        type: String,
+        default: 'TRY',
+        enum: ['TRY', 'USD', 'EUR', 'GBP'],
+    },
+    salePriceTRY: {
+        type: Number,
+        default: 0,
+        min: 0,
+        // This stores the TRY equivalent of salePrice
+        // Calculated and saved when product is created/updated
     },
     priceUSD: {
         type: Number,

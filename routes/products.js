@@ -64,11 +64,32 @@ router.post('/', [auth, manager, [
         const categoryId = category && category !== '' ? category : null;
         const brandId = brand && brand !== '' ? brand : null;
 
+        // Calculate TRY equivalent if selling in foreign currency
+        let salePriceTRY = salePrice || 0;
+        const saleCurr = req.body.saleCurrency || currency || 'TRY';
+
+        if (saleCurr !== 'TRY' && salePrice) {
+            try {
+                const { getExchangeRates } = require('../services/currencyService');
+                const rates = await getExchangeRates();
+                if (rates && rates[saleCurr]) {
+                    salePriceTRY = salePrice * parseFloat(rates[saleCurr].rate);
+                    console.log(`Converted ${salePrice} ${saleCurr} to ${salePriceTRY} TRY`);
+                }
+            } catch (err) {
+                console.error('Currency conversion error:', err.message);
+                // If conversion fails, use original price
+            }
+        }
+
         product = new Product({
             name, sku, description, barcode, tags, unit,
             purchasePrice, salePrice, quantity, criticalStockLevel, trackStock,
             brand: brandId, category: categoryId, shelfLocation, currency, priceUSD, priceEUR,
-            oem, company: req.user.company
+            purchaseCurrency: req.body.purchaseCurrency || currency || 'TRY',
+            saleCurrency: saleCurr,
+            salePriceTRY,
+            oem: parseOEM(oem), company: req.user.company
         });
 
         await product.save();
@@ -358,6 +379,29 @@ router.put('/:id', [auth, manager], async (req, res) => {
     }
     if (shelfLocation !== undefined) productFields.shelfLocation = shelfLocation;
     if (currency) productFields.currency = currency;
+    if (req.body.purchaseCurrency !== undefined) productFields.purchaseCurrency = req.body.purchaseCurrency;
+    if (req.body.saleCurrency !== undefined) productFields.saleCurrency = req.body.saleCurrency;
+
+    // Calculate TRY equivalent if selling in foreign currency
+    if (salePrice !== undefined) {
+        const saleCurr = req.body.saleCurrency || currency || 'TRY';
+        let salePriceTRY = salePrice;
+
+        if (saleCurr !== 'TRY' && salePrice) {
+            try {
+                const { getExchangeRates } = require('../services/currencyService');
+                const rates = await getExchangeRates();
+                if (rates && rates[saleCurr]) {
+                    salePriceTRY = salePrice * parseFloat(rates[saleCurr].rate);
+                    console.log(`Converted ${salePrice} ${saleCurr} to ${salePriceTRY} TRY`);
+                }
+            } catch (err) {
+                console.error('Currency conversion error:', err.message);
+            }
+        }
+        productFields.salePriceTRY = salePriceTRY;
+    }
+
     if (priceUSD !== undefined) productFields.priceUSD = priceUSD;
     if (priceEUR !== undefined) productFields.priceEUR = priceEUR;
     if (oem !== undefined) productFields.oem = oem;
