@@ -10,6 +10,16 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 const { parseExcel, generateExcel } = require('../services/excelService');
 
+// Helper to normalize OEM input (string like "123, 456" -> ['123','456'])
+function parseOEM(oem) {
+    if (!oem) return [];
+    if (Array.isArray(oem)) return oem.map(v => String(v).trim()).filter(Boolean);
+    return String(oem)
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+}
+
 // ... existing imports ...
 // @route   GET api/products/next-sku
 // @desc    Get next suggested SKU
