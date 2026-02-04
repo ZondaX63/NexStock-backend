@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const TransactionSchema = new mongoose.Schema({
     type: {
         type: String,
-        enum: ['income', 'expense', 'transfer', 'invoice_accrual'],
+        enum: ['income', 'expense', 'transfer', 'invoice_accrual', 'receivable'],
         required: true,
     },
     description: {
@@ -12,6 +12,10 @@ const TransactionSchema = new mongoose.Schema({
     amount: {
         type: Number,
         required: true,
+    },
+    currency: {
+        type: String,
+        default: 'TRY'
     },
     date: {
         type: Date,
@@ -46,6 +50,23 @@ const TransactionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     },
+    items: [{
+        product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        name: String,
+        sku: String,
+        quantity: Number,
+        price: Number,
+        subtotal: Number
+    }],
+    cancelled: {
+        type: Boolean,
+        default: false
+    },
+    cancelledAt: Date,
+    cancelledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    }
 });
 
 module.exports = mongoose.model('Transaction', TransactionSchema);

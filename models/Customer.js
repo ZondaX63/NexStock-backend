@@ -33,6 +33,10 @@ const CustomerSchema = new mongoose.Schema({
         type: Number,
         default: 0, // Positive: They owe us, Negative: We owe them
     },
+    currency: {
+        type: String,
+        default: 'TRY',
+    },
     notes: {
         type: String,
         default: '',

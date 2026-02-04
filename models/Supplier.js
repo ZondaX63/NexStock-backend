@@ -42,6 +42,10 @@ const SupplierSchema = new mongoose.Schema({
         // Customer Balance > 0 means they owe us.
         // Supplier Balance > 0 means we owe them.
     },
+    currency: {
+        type: String,
+        default: 'TRY',
+    },
     notes: {
         type: String,
         default: '',

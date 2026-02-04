@@ -77,7 +77,7 @@ router.post('/', auth, async (req, res) => {
             description: 'Açılış Bakiyesi',
             date: new Date(),
             targetAccount: Number(balance) > 0 ? account._id : undefined,
-            sourceAccount: Number(balance) < 0 ? account._id : undefined,
+            sourceAccount: Number(balance) > 0 ? undefined : account._id,
             company: req.user.company,
             createdBy: req.user.id
         });
@@ -101,22 +101,57 @@ router.post('/', auth, async (req, res) => {
 
 // Hesap güncelle
 router.put('/:id', auth, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const { name, type, currency, cariType, partnerId } = req.body;
-    // Exclude balance from update
-    const account = await Account.findOneAndUpdate(
-      { _id: req.params.id, company: req.user.company },
-      { name, type, currency, cariType, partnerId },
-      { new: true }
-    );
-    if (!account) return res.status(404).json({ error: 'Hesap bulunamadı.' });
+    const { name, type, currency, cariType, partnerId, balance } = req.body;
     
-    // Recompute just in case
-    await recomputeAccountBalance(account);
-    
-    res.json(account);
+    // Get current account to compare balance
+    const currentAccount = await Account.findOne({ _id: req.params.id, company: req.user.company }).session(session);
+    if (!currentAccount) {
+      await session.abortTransaction();
+      return res.status(404).json({ error: 'Hesap bulunamadı.' });
+    }
+
+    const oldBalance = currentAccount.balance || 0;
+    const newBalance = balance !== undefined ? Number(balance) : oldBalance;
+    const balanceChanged = Math.abs(newBalance - oldBalance) > 0.001; // Floating point comparison
+
+    // Update account fields
+    currentAccount.name = name || currentAccount.name;
+    currentAccount.type = type || currentAccount.type;
+    currentAccount.currency = currency || currentAccount.currency;
+    currentAccount.cariType = cariType || currentAccount.cariType;
+    currentAccount.partnerId = partnerId || currentAccount.partnerId;
+    currentAccount.balance = newBalance;
+
+    await currentAccount.save({ session });
+
+    // If balance changed, create a transaction record
+    if (balanceChanged) {
+      const difference = newBalance - oldBalance;
+      const transaction = new Transaction({
+        type: difference > 0 ? 'income' : 'expense',
+        amount: Math.abs(difference),
+        currency: currentAccount.currency,
+        description: `Manuel bakiye düzeltmesi: ${currentAccount.name} hesabı ${oldBalance.toFixed(2)} ${currentAccount.currency} → ${newBalance.toFixed(2)} ${currentAccount.currency} (Fark: ${difference > 0 ? '+' : ''}${difference.toFixed(2)} ${currentAccount.currency})`,
+        date: new Date(),
+        targetAccount: difference > 0 ? currentAccount._id : undefined,
+        sourceAccount: difference > 0 ? undefined : currentAccount._id,
+        company: req.user.company,
+        createdBy: req.user.id
+      });
+      await transaction.save({ session });
+    }
+
+    await session.commitTransaction();
+    res.json(currentAccount);
   } catch (err) {
+    await session.abortTransaction();
+    console.error('Account update error:', err);
     res.status(400).json({ error: 'Hesap güncellenemedi.' });
+  } finally {
+    session.endSession();
   }
 });
 
@@ -188,6 +223,60 @@ router.post('/transfer', auth, async (req, res) => {
   } catch (err) {
     console.error('Transfer error:', err);
     res.status(500).json({ error: 'Transfer işlemi başarısız.' });
+  }
+});
+
+// @route   POST api/accounts/:id/adjust-balance
+// @desc    Manually adjust account balance with confirmation
+// @access  Private
+router.post('/:id/adjust-balance', auth, async (req, res) => {
+  try {
+    const { newBalance, reason, confirmation } = req.body;
+
+    if (!confirmation) {
+      return res.status(400).json({ error: 'Onay gerekli. İşlemi onaylamak için confirmation: true gönderin.' });
+    }
+
+    const account = await Account.findOne({ _id: req.params.id, company: req.user.company });
+    if (!account) {
+      return res.status(404).json({ error: 'Hesap bulunamadı.' });
+    }
+
+    const oldBalance = account.balance;
+    const difference = newBalance - oldBalance;
+
+    if (difference === 0) {
+      return res.status(400).json({ error: 'Yeni bakiye mevcut bakiye ile aynı.' });
+    }
+
+    // Create adjustment transaction
+    const transaction = new Transaction({
+      type: difference > 0 ? 'income' : 'expense',
+      description: `Manuel bakiye düzeltmesi: ${reason || 'Sebep belirtilmedi'} (Eski: ${oldBalance.toFixed(2)} ${account.currency}, Yeni: ${newBalance.toFixed(2)} ${account.currency})`,
+      amount: Math.abs(difference),
+      date: new Date(),
+      sourceAccount: difference < 0 ? account._id : undefined,
+      targetAccount: difference > 0 ? account._id : undefined,
+      company: req.user.company,
+      createdBy: req.user.id
+    });
+    await transaction.save();
+
+    // Update account balance
+    account.balance = newBalance;
+    await account.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Hesap bakiyesi başarıyla güncellendi.',
+      oldBalance,
+      newBalance,
+      difference,
+      transaction 
+    });
+  } catch (err) {
+    console.error('Adjust account balance error:', err);
+    res.status(500).json({ error: 'Bakiye düzeltilirken hata oluştu.', details: err.message });
   }
 });
 

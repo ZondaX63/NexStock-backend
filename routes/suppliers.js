@@ -99,24 +99,61 @@ router.get('/:id', auth, async (req, res) => {
 // @desc    Update a supplier
 // @access  Private
 router.put('/:id', auth, async (req, res) => {
-    const { name, contactPerson, email, phone, taxNumber, taxOffice, notes } = req.body;
-    const supplierFields = { name, contactPerson, email, phone, taxNumber, taxOffice, notes };
+    const mongoose = require('mongoose');
+    const Transaction = require('../models/Transaction');
+    const session = await mongoose.startSession();
+    session.startTransaction();
     
-    // Remove undefined fields
-    Object.keys(supplierFields).forEach(key => supplierFields[key] === undefined && delete supplierFields[key]);
-
     try {
-        let supplier = await Supplier.findOne({ _id: req.params.id, company: req.user.company });
-        if (!supplier) return res.status(404).json({ msg: 'Supplier not found' });
+        const { name, contactPerson, email, phone, taxNumber, taxOffice, notes, openingBalance, currency } = req.body;
+        
+        let supplier = await Supplier.findOne({ _id: req.params.id, company: req.user.company }).session(session);
+        if (!supplier) {
+            await session.abortTransaction();
+            return res.status(404).json({ msg: 'Supplier not found' });
+        }
+
+        const oldBalance = supplier.balance || 0;
+        const newBalance = openingBalance !== undefined ? Number(openingBalance) : oldBalance;
+        const balanceChanged = Math.abs(newBalance - oldBalance) > 0.001;
+
+        // Update supplier fields
+        const supplierFields = { name, contactPerson, email, phone, taxNumber, taxOffice, notes, balance: newBalance, currency: currency || supplier.currency || 'TRY' };
+        Object.keys(supplierFields).forEach(key => supplierFields[key] === undefined && delete supplierFields[key]);
+
         supplier = await Supplier.findByIdAndUpdate(
             req.params.id,
             { $set: supplierFields },
-            { new: true }
+            { new: true, session }
         );
+
+        // If balance changed, create a transaction record
+        if (balanceChanged) {
+            const difference = newBalance - oldBalance;
+            // Tedarikçi bakiyesi: pozitif = borç (biz borçluyuz), negatif = alacak (tedarikçi borçlu)
+            // Bakiye arttığında (borç artışı) = expense
+            // Bakiye azaldığında (borç azalışı) = income
+            const transaction = new Transaction({
+                type: difference > 0 ? 'expense' : 'income',
+                amount: Math.abs(difference),
+                currency: supplier.currency || 'TRY',
+                description: `Manuel bakiye düzeltmesi: ${supplier.name} tedarikçisi ${oldBalance.toFixed(2)} ${supplier.currency || 'TRY'} → ${newBalance.toFixed(2)} ${supplier.currency || 'TRY'} (${difference > 0 ? 'Borç artışı: +' : 'Borç azalışı: '}${difference.toFixed(2)} ${supplier.currency || 'TRY'})`,
+                date: new Date(),
+                supplier: supplier._id,
+                company: req.user.company,
+                createdBy: req.user.id
+            });
+            await transaction.save({ session });
+        }
+
+        await session.commitTransaction();
         res.json(supplier);
     } catch (err) {
-        console.error(err.message);
+        await session.abortTransaction();
+        console.error('Supplier update error:', err);
         res.status(500).send('Server Error');
+    } finally {
+        session.endSession();
     }
 });
 

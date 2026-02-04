@@ -150,24 +150,60 @@ router.get('/:id/debt', auth, async (req, res) => {
 // @desc    Update a customer
 // @access  Private
 router.put('/:id', auth, async (req, res) => {
-    const { name, email, phone, address, taxNumber, taxOffice, notes } = req.body;
-    const customerFields = { name, email, phone, address, taxNumber, taxOffice, notes };
+    const mongoose = require('mongoose');
+    const session = await mongoose.startSession();
+    session.startTransaction();
     
-    // Remove undefined fields
-    Object.keys(customerFields).forEach(key => customerFields[key] === undefined && delete customerFields[key]);
-
     try {
-        let customer = await Customer.findOne({ _id: req.params.id, company: req.user.company });
-        if (!customer) return res.status(404).json({ msg: 'Customer not found' });
+        const { name, email, phone, address, taxNumber, taxOffice, notes, openingBalance, currency } = req.body;
+        
+        let customer = await Customer.findOne({ _id: req.params.id, company: req.user.company }).session(session);
+        if (!customer) {
+            await session.abortTransaction();
+            return res.status(404).json({ msg: 'Customer not found' });
+        }
+
+        const oldBalance = customer.balance || 0;
+        const newBalance = openingBalance !== undefined ? Number(openingBalance) : oldBalance;
+        const balanceChanged = Math.abs(newBalance - oldBalance) > 0.001;
+
+        // Update customer fields
+        const customerFields = { name, email, phone, address, taxNumber, taxOffice, notes, balance: newBalance, currency: currency || customer.currency || 'TRY' };
+        Object.keys(customerFields).forEach(key => customerFields[key] === undefined && delete customerFields[key]);
+
         customer = await Customer.findByIdAndUpdate(
             req.params.id,
             { $set: customerFields },
-            { new: true }
+            { new: true, session }
         );
+
+        // If balance changed, create a transaction record
+        if (balanceChanged) {
+            const difference = newBalance - oldBalance;
+            // Müşteri bakiyesi: pozitif = alacak (müşteri borçlu), negatif = verecek (biz borçlu)
+            // Bakiye arttığında (alacak artışı) = income/receivable
+            // Bakiye azaldığında (alacak azalışı) = expense
+            const transaction = new Transaction({
+                type: difference > 0 ? 'income' : 'expense',
+                amount: Math.abs(difference),
+                currency: customer.currency || 'TRY',
+                description: `Manuel bakiye düzeltmesi: ${customer.name} müşterisi ${oldBalance.toFixed(2)} ${customer.currency || 'TRY'} → ${newBalance.toFixed(2)} ${customer.currency || 'TRY'} (${difference > 0 ? 'Alacak artışı: +' : 'Alacak azalışı: '}${difference.toFixed(2)} ${customer.currency || 'TRY'})`,
+                date: new Date(),
+                customer: customer._id,
+                company: req.user.company,
+                createdBy: req.user.id
+            });
+            await transaction.save({ session });
+        }
+
+        await session.commitTransaction();
         res.json(customer);
     } catch (err) {
-        console.error(err.message);
+        await session.abortTransaction();
+        console.error('Customer update error:', err);
         res.status(500).send('Server Error');
+    } finally {
+        session.endSession();
     }
 });
 
@@ -223,6 +259,59 @@ router.post('/:id/debt-adjustment', auth, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ msg: 'Borç düzeltme sırasında hata oluştu.' });
+    }
+});
+
+// @route   POST api/customers/:id/adjust-balance
+// @desc    Manually adjust customer balance with confirmation
+// @access  Private
+router.post('/:id/adjust-balance', auth, async (req, res) => {
+    try {
+        const { newBalance, reason, confirmation } = req.body;
+
+        if (!confirmation) {
+            return res.status(400).json({ error: 'Onay gerekli. İşlemi onaylamak için confirmation: true gönderin.' });
+        }
+
+        const customer = await Customer.findOne({ _id: req.params.id, company: req.user.company });
+        if (!customer) {
+            return res.status(404).json({ error: 'Müşteri bulunamadı.' });
+        }
+
+        const oldBalance = customer.balance;
+        const difference = newBalance - oldBalance;
+
+        if (difference === 0) {
+            return res.status(400).json({ error: 'Yeni bakiye mevcut bakiye ile aynı.' });
+        }
+
+        // Create adjustment transaction
+        const transaction = new Transaction({
+            type: difference > 0 ? 'receivable' : 'income',
+            description: `Manuel bakiye düzeltmesi: ${reason || 'Sebep belirtilmedi'} (Eski: ${oldBalance.toFixed(2)} TL, Yeni: ${newBalance.toFixed(2)} TL)`,
+            amount: Math.abs(difference),
+            date: new Date(),
+            customer: customer._id,
+            company: req.user.company,
+            createdBy: req.user.id
+        });
+        await transaction.save();
+
+        // Update customer balance
+        customer.balance = newBalance;
+        await customer.save();
+
+        res.json({ 
+            success: true, 
+            message: 'Bakiye başarıyla güncellendi.',
+            oldBalance,
+            newBalance,
+            difference,
+            transaction 
+        });
+    } catch (err) {
+        console.error('Adjust balance error:', err);
+        res.status(500).json({ error: 'Bakiye düzeltilirken hata oluştu.', details: err.message });
     }
 });
 

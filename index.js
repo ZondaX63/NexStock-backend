@@ -67,6 +67,7 @@ app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api/logs', require('./routes/logs'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/currency', require('./routes/currency'));
+app.use('/api/pos', require('./routes/pos'));
 // ... diğer route'lar buraya eklenebilir
 
 // Serve static frontend if build exists (monolith image)
@@ -88,7 +89,7 @@ if (process.env.NODE_ENV === 'production' || fs.existsSync(indexHtmlPath)) {
 // Health endpoint for Docker/monitoring
 app.get('/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.json({ status: 'ok', database: dbStatus });
+  res.json({ status: 'ok', app: 'NexStock', database: dbStatus });
 });
 
 // Root endpoint

@@ -263,4 +263,50 @@ router.get('/flow', auth, async (req, res) => {
     }
 });
 
+// @route   DELETE api/transactions/:id
+// @desc    Delete a transaction and recompute balances
+// @access  Private
+router.delete('/:id', auth, async (req, res) => {
+    try {
+        const transaction = await Transaction.findOne({ 
+            _id: req.params.id, 
+            company: req.user.company 
+        });
+
+        if (!transaction) {
+            return res.status(404).json({ error: 'İşlem bulunamadı.' });
+        }
+
+        // Store related accounts/partners before deletion
+        const sourceAccount = transaction.sourceAccount;
+        const targetAccount = transaction.targetAccount;
+        const customer = transaction.customer;
+        const supplier = transaction.supplier;
+
+        // Delete the transaction
+        await Transaction.findByIdAndDelete(req.params.id);
+
+        // Recompute balances
+        if (sourceAccount) {
+            const acc = await Account.findById(sourceAccount);
+            if (acc) await recomputeAccountBalance(acc);
+        }
+        if (targetAccount) {
+            const acc = await Account.findById(targetAccount);
+            if (acc) await recomputeAccountBalance(acc);
+        }
+        if (customer) {
+            await recomputePartnerBalances(req.user.company);
+        }
+        if (supplier) {
+            await recomputePartnerBalances(req.user.company);
+        }
+
+        res.json({ success: true, message: 'İşlem başarıyla silindi.' });
+    } catch (err) {
+        console.error('Delete transaction error:', err);
+        res.status(500).json({ error: 'İşlem silinirken hata oluştu.', details: err.message });
+    }
+});
+
 module.exports = router;
